@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.1.0
+
+- Add `install-vs-components` input (default `true`) to skip the runtime VS component install on
+  images that already ship the required Visual Studio toolset (e.g. a custom VS 2026 image),
+  matching `nvaccess/nvda`'s own build.
+- Add `vs-version` input to select a specific major VS version (`17` = VS 2022, `18` = VS 2026)
+  when multiple are installed.
+- Locate Visual Studio with `vswhere` instead of a hardcoded `2022\Enterprise` path, so the
+  install works across Community/Enterprise/BuildTools and different VS versions.
+- Include the VS version in the SCons MSVC config cache key.
+- Document the standard-vs-custom-runner and fork tradeoffs.
+
 ## v1.0.0
 
 Initial release of `prepare-nvda-source`, a composite action that builds a runnable NVDA source

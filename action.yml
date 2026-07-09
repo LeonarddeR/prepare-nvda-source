@@ -18,6 +18,20 @@ inputs:
     description: Extra arguments appended to `scons source` (e.g. -j2, version=...)
     required: false
     default: "-j2"
+  install-vs-components:
+    description: >-
+      Whether to install the VS components from NVDA's .vsconfig at runtime. Set to false on
+      runner images that already ship the required Visual Studio toolset (e.g. a custom VS 2026
+      image) to skip the install and behave like nvaccess/nvda's own build.
+    required: false
+    default: "true"
+  vs-version:
+    description: >-
+      Major Visual Studio version to select when installing components (e.g. 17 for VS 2022, 18
+      for VS 2026). Leave empty to use the latest installed VS. Only used when
+      install-vs-components is true.
+    required: false
+    default: ""
 
 outputs:
   nvda-ref:
@@ -80,16 +94,30 @@ runs:
         ref: ${{ inputs.nvda-ref }}
 
     - name: Install Visual Studio components
-      if: steps.cache-nvda.outputs.cache-hit != 'true'
+      if: steps.cache-nvda.outputs.cache-hit != 'true' && inputs.install-vs-components == 'true'
       shell: pwsh
       run: |
-        Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
-        $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+        $installerDir = "C:\Program Files (x86)\Microsoft Visual Studio\Installer"
+        # Locate the VS install with vswhere instead of hardcoding an edition/path, so this works
+        # across Community/Enterprise/BuildTools and different VS versions.
+        $vswhere = Join-Path $installerDir "vswhere.exe"
+        $vsArgs = @('-latest', '-products', '*', '-property', 'installationPath')
+        $vsVersion = '${{ inputs.vs-version }}'
+        if ($vsVersion) {
+          $next = [int]$vsVersion + 1
+          $vsArgs += @('-version', "[$vsVersion.0,$next.0)")
+        }
+        $InstallPath = (& $vswhere @vsArgs | Select-Object -First 1)
+        if (-not $InstallPath) {
+          throw "No Visual Studio installation found (vswhere returned nothing for version '$vsVersion')."
+        }
+        Write-Host "Using Visual Studio at: $InstallPath"
         $ConfigPath = Join-Path -Path ${env:GITHUB_WORKSPACE} -ChildPath "nvda\.vsconfig"
+        Set-Location $installerDir
         $Arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", '--config', "`"$ConfigPath`"", '--quiet', '--norestart', '--nocache', '--includeRecommended')
         # should be run twice
-        $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
-        $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+        Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden | Out-Null
+        Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden | Out-Null
 
     # ImageVersion is a runner-set env var and isn't available in the `env` expression context, so
     # build the key in a shell step (mirrors nvaccess/nvda). The .vsconfig hash keeps the cache
@@ -97,7 +125,7 @@ runs:
     - name: Compute SCons MSVC cache key
       if: steps.cache-nvda.outputs.cache-hit != 'true'
       shell: bash
-      run: echo "SCONS_MSVC_CACHE_KEY=${RUNNER_OS}-scons-msvc-${ImageVersion}-${{ hashFiles('nvda/.vsconfig') }}" >> $GITHUB_ENV
+      run: echo "SCONS_MSVC_CACHE_KEY=${RUNNER_OS}-scons-msvc-${ImageVersion}-${{ inputs.vs-version }}-${{ hashFiles('nvda/.vsconfig') }}" >> $GITHUB_ENV
 
     - name: Cache SCons MSVC config
       if: steps.cache-nvda.outputs.cache-hit != 'true'
