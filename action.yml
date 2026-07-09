@@ -47,11 +47,6 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Install uv
-      uses: astral-sh/setup-uv@v7
-      with:
-        enable-cache: true
-
     - name: Set up Python
       uses: actions/setup-python@v6
       with:
@@ -92,6 +87,14 @@ runs:
         submodules: recursive
         path: nvda
         ref: ${{ inputs.nvda-ref }}
+
+    # Installed after NVDA is available (from checkout or the restored cache) so setup-uv can key its
+    # cache on NVDA's lockfile. uv is only needed for `scons source`, which runs after this.
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        enable-cache: true
+        cache-dependency-glob: nvda/uv.lock
 
     - name: Install Visual Studio components
       if: steps.cache-nvda.outputs.cache-hit != 'true' && inputs.install-vs-components == 'true'
