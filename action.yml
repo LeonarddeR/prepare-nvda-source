@@ -1,0 +1,117 @@
+name: Prepare NVDA source
+description: Checkout and build a runnable NVDA source tree for add-on development (scons source)
+
+inputs:
+  python-version:
+    description: Python version to install
+    required: true
+  python-arch:
+    description: Python architecture (x86 or x64)
+    required: true
+  nvda-ref:
+    description: Git ref to checkout (tag or branch)
+    required: true
+  github-token:
+    description: GitHub token for API access (used to resolve the NVDA ref to a commit SHA)
+    required: true
+  scons-args:
+    description: Extra arguments appended to `scons source` (e.g. -j2, version=...)
+    required: false
+    default: "-j2"
+
+outputs:
+  nvda-ref:
+    description: The NVDA ref that was checked out
+    value: ${{ inputs.nvda-ref }}
+  nvda-path:
+    description: Path to the built NVDA source tree, relative to the workspace
+    value: nvda
+  cache-hit:
+    description: Whether the NVDA cache was hit
+    value: ${{ steps.cache-nvda.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        enable-cache: true
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+        architecture: ${{ inputs.python-arch }}
+
+    # NVDA's x64 builds contain 32-bit components, so a matching 32-bit interpreter is required to
+    # build them. x86 builds already have a 32-bit primary interpreter, so this is skipped there.
+    - name: Set up Python (32 bit)
+      if: inputs.python-arch == 'x64'
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+        architecture: x86
+        update-environment: false
+
+    - name: Get NVDA commit SHA
+      id: get-sha
+      shell: bash
+      run: |
+        SHA=$(gh api repos/nvaccess/nvda/commits/${{ inputs.nvda-ref }} --jq '.sha')
+        echo "sha=$SHA" >> $GITHUB_OUTPUT
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+
+    - name: Cache NVDA
+      id: cache-nvda
+      uses: actions/cache@v5
+      with:
+        path: nvda
+        key: ${{ runner.os }}-nvda-${{ inputs.python-version }}-${{ inputs.python-arch }}-${{ steps.get-sha.outputs.sha }}
+
+    - name: Checkout NVDA
+      if: steps.cache-nvda.outputs.cache-hit != 'true'
+      uses: actions/checkout@v7
+      with:
+        repository: nvaccess/nvda
+        submodules: recursive
+        path: nvda
+        ref: ${{ inputs.nvda-ref }}
+
+    - name: Install Visual Studio components
+      if: steps.cache-nvda.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+        $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+        $ConfigPath = Join-Path -Path ${env:GITHUB_WORKSPACE} -ChildPath "nvda\.vsconfig"
+        $Arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", '--config', "`"$ConfigPath`"", '--quiet', '--norestart', '--nocache', '--includeRecommended')
+        # should be run twice
+        $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+        $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+
+    # ImageVersion is a runner-set env var and isn't available in the `env` expression context, so
+    # build the key in a shell step (mirrors nvaccess/nvda). The .vsconfig hash keeps the cache
+    # correct when the installed VS components differ between NVDA versions.
+    - name: Compute SCons MSVC cache key
+      if: steps.cache-nvda.outputs.cache-hit != 'true'
+      shell: bash
+      run: echo "SCONS_MSVC_CACHE_KEY=${RUNNER_OS}-scons-msvc-${ImageVersion}-${{ hashFiles('nvda/.vsconfig') }}" >> $GITHUB_ENV
+
+    - name: Cache SCons MSVC config
+      if: steps.cache-nvda.outputs.cache-hit != 'true'
+      uses: actions/cache@v5
+      with:
+        path: .scons_msvc_cache.json
+        key: ${{ env.SCONS_MSVC_CACHE_KEY }}
+
+    - name: Prepare NVDA's source tree
+      if: steps.cache-nvda.outputs.cache-hit != 'true'
+      shell: cmd
+      env:
+        SCONS_CACHE_MSVC_CONFIG: ${{ github.workspace }}/.scons_msvc_cache.json
+        VSCMD_SKIP_SENDTELEMETRY: "1"
+      run: |
+        cd nvda
+        scons source ${{ inputs.scons-args }}
