@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.1
+
+- Install uv after the NVDA checkout/restore (with `cache-dependency-glob: nvda/uv.lock`) so
+  `setup-uv` can key its cache on NVDA's lockfile, removing the "cache will never get invalidated"
+  warning.
+
 ## v1.1.0
 
 - Add `install-vs-components` input (default `true`) to skip the runtime VS component install on
