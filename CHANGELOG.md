@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.1.2
+
+- Simplify the VS component install: run `vs_installer.exe` directly instead of via a `cmd.exe`
+  wrapper, locate the installer via `${ProgramFiles(x86)}` rather than a hardcoded drive path, and
+  express the deliberate double-run as a loop documenting why (the first pass may only self-update
+  the installer).
+- Remove the redundant `nvda-ref` output (it only echoed the caller's own input). The `nvda-path`
+  and `cache-hit` outputs are unchanged.
+
 ## v1.1.1
 
 - Install uv after the NVDA checkout/restore (with `cache-dependency-glob: nvda/uv.lock`) so

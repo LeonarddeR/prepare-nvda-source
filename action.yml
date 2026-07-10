@@ -34,9 +34,6 @@ inputs:
     default: ""
 
 outputs:
-  nvda-ref:
-    description: The NVDA ref that was checked out
-    value: ${{ inputs.nvda-ref }}
   nvda-path:
     description: Path to the built NVDA source tree, relative to the workspace
     value: nvda
@@ -100,7 +97,7 @@ runs:
       if: steps.cache-nvda.outputs.cache-hit != 'true' && inputs.install-vs-components == 'true'
       shell: pwsh
       run: |
-        $installerDir = "C:\Program Files (x86)\Microsoft Visual Studio\Installer"
+        $installerDir = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer"
         # Locate the VS install with vswhere instead of hardcoding an edition/path, so this works
         # across Community/Enterprise/BuildTools and different VS versions.
         $vswhere = Join-Path $installerDir "vswhere.exe"
@@ -115,12 +112,13 @@ runs:
           throw "No Visual Studio installation found (vswhere returned nothing for version '$vsVersion')."
         }
         Write-Host "Using Visual Studio at: $InstallPath"
-        $ConfigPath = Join-Path -Path ${env:GITHUB_WORKSPACE} -ChildPath "nvda\.vsconfig"
-        Set-Location $installerDir
-        $Arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", '--config', "`"$ConfigPath`"", '--quiet', '--norestart', '--nocache', '--includeRecommended')
-        # should be run twice
-        Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden | Out-Null
-        Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden | Out-Null
+        $ConfigPath = Join-Path ${env:GITHUB_WORKSPACE} "nvda\.vsconfig"
+        $vsInstaller = Join-Path $installerDir "vs_installer.exe"
+        $Arguments = @('modify', '--installPath', $InstallPath, '--config', $ConfigPath, '--quiet', '--norestart', '--nocache', '--includeRecommended')
+        # Run twice: the first pass may only self-update the installer without applying the config.
+        foreach ($attempt in 1..2) {
+          Start-Process -FilePath $vsInstaller -ArgumentList $Arguments -Wait -WindowStyle Hidden
+        }
 
     # ImageVersion is a runner-set env var and isn't available in the `env` expression context, so
     # build the key in a shell step (mirrors nvaccess/nvda). The .vsconfig hash keeps the cache

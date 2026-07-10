@@ -41,7 +41,6 @@ so nothing extra is installed. This mirrors what `nvaccess/nvda` does in its own
 
 | Output | Description |
 |--------|-------------|
-| `nvda-ref` | The NVDA ref that was checked out (echoes the input). |
 | `nvda-path` | Path to the built NVDA tree relative to the workspace (`nvda`). |
 | `cache-hit` | `true` when the NVDA build was restored from cache (checkout/build skipped). |
 
