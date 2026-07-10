@@ -53,3 +53,11 @@ jobs:
           & $py -c "import buildVersion; print('NVDA source importable:', buildVersion.name, buildVersion.version)"
           if ($LASTEXITCODE -ne 0) { throw "NVDA source tree is not importable (buildVersion missing - scons source did not run)" }
           Write-Host "cache-hit=${{ steps.prepare.outputs.cache-hit }} nvda-path=${{ steps.prepare.outputs.nvda-path }}"
+
+      # Run NVDA's own unit test suite (not system tests, which are slow) via NVDA's entrypoint, so
+      # this stays correct across NVDA versions. It exits non-zero if any unit test fails, proving
+      # the built tree is actually functional - not just importable.
+      - name: Run NVDA unit tests
+        shell: cmd
+        working-directory: nvda
+        run: rununittests.bat
