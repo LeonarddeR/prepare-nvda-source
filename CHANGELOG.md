@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.1.3
+
+- Correct the Visual Studio 2026 guidance: `windows-2025-vs2026` is a **standard, generally-available**
+  GitHub-hosted image (VS 2026 Enterprise pre-installed), not an org-private runner. To build frontier
+  NVDA, target `runs-on: windows-2025-vs2026` with `install-vs-components: false` — no self-hosted or
+  custom runner needed. Updates README, CHANGELOG, and the input descriptions accordingly.
+- Add a `master` self-test entry that builds on `windows-2025-vs2026` with
+  `install-vs-components: false`, exercising the pre-baked-image path.
+
 ## v1.1.2
 
 - Simplify the VS component install: run `vs_installer.exe` directly instead of via a `cmd.exe`
@@ -18,8 +27,8 @@
 ## v1.1.0
 
 - Add `install-vs-components` input (default `true`) to skip the runtime VS component install on
-  images that already ship the required Visual Studio toolset (e.g. a custom VS 2026 image),
-  matching `nvaccess/nvda`'s own build.
+  images that already ship the required Visual Studio toolset (e.g. the standard
+  `windows-2025-vs2026` image), matching `nvaccess/nvda`'s own build.
 - Add `vs-version` input to select a specific major VS version (`17` = VS 2022, `18` = VS 2026)
   when multiple are installed.
 - Locate Visual Studio with `vswhere` instead of a hardcoded `2022\Enterprise` path, so the

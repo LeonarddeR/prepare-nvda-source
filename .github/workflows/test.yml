@@ -10,19 +10,34 @@ on:
 jobs:
   prepare-nvda:
     name: Prepare NVDA ${{ matrix.name }}
-    runs-on: windows-2022
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Current releases build with VS 2022 on the stock windows-2022 image, adding NVDA's
+          # .vsconfig components at runtime (install-vs-components: true).
           - name: "2025.3"
             python: "3.11"
             arch: x86
             ref: release-2025.3.3
+            runner: windows-2022
+            install-vs-components: "true"
           - name: "2026.1"
             python: "3.13.12"
             arch: x64
             ref: release-2026.1
+            runner: windows-2022
+            install-vs-components: "true"
+          # Frontier NVDA builds with VS 2026, which ships pre-installed on the standard GA
+          # windows-2025-vs2026 image, so no runtime component install is needed. This mirrors
+          # nvaccess/nvda's own build and proves the pre-baked-image path cross-org.
+          - name: "master (VS 2026)"
+            python: "3.13.12"
+            arch: x64
+            ref: master
+            runner: windows-2025-vs2026
+            install-vs-components: "false"
 
     steps:
       - name: Checkout action
@@ -36,6 +51,7 @@ jobs:
           python-arch: ${{ matrix.arch }}
           nvda-ref: ${{ matrix.ref }}
           github-token: ${{ github.token }}
+          install-vs-components: ${{ matrix.install-vs-components }}
 
       # Cheap "did the action build a tree" signal, kept distinct from unit-test failures below.
       # Consumes nvda-path so the output stays exercised.
