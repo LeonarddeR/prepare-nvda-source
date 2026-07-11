@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.2.0
+
+- Make `python-version` and `python-arch` optional. When either is empty, the action auto-detects it
+  from NVDA's root `.python-versions` file at the target ref (`cpython-<X.Y.Z>-windows-<arch>-none`,
+  first line = primary, `x86_64` → `x64`). Since NVDA's uv is `python-preference = only-system`, this
+  keeps the installed interpreter in sync with the exact patch NVDA pins, instead of hard-coding a
+  version that drifts. Explicit inputs still override; consumers targeting NVDA ≥ 2025.3 can now pass
+  just `nvda-ref` + `github-token`.
+- Auto-detection requires NVDA ≥ 2025.3 (when `.python-versions` was introduced). For older refs the
+  step fails with a clear message telling you to pass `python-version`/`python-arch` explicitly.
+- Backward compatible: explicit callers are unaffected, and their cache keys are unchanged (the
+  resolved values echo the inputs verbatim).
+
 ## v1.1.3
 
 - Correct the Visual Studio 2026 guidance: `windows-2025-vs2026` is a **standard, generally-available**

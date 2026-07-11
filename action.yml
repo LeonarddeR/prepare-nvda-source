@@ -3,11 +3,17 @@ description: Checkout and build a runnable NVDA source tree for add-on developme
 
 inputs:
   python-version:
-    description: Python version to install
-    required: true
+    description: >-
+      Python version to install. Leave empty to auto-detect it from NVDA's .python-versions file
+      (requires NVDA >= 2025.3). An explicit value overrides the auto-detected one.
+    required: false
+    default: ""
   python-arch:
-    description: Python architecture (x86 or x64)
-    required: true
+    description: >-
+      Python architecture (x86 or x64). Leave empty to auto-detect it from NVDA's .python-versions
+      file (requires NVDA >= 2025.3). An explicit value overrides the auto-detected one.
+    required: false
+    default: ""
   nvda-ref:
     description: Git ref to checkout (tag or branch)
     required: true
@@ -44,22 +50,6 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Set up Python
-      uses: actions/setup-python@v6
-      with:
-        python-version: ${{ inputs.python-version }}
-        architecture: ${{ inputs.python-arch }}
-
-    # NVDA's x64 builds contain 32-bit components, so a matching 32-bit interpreter is required to
-    # build them. x86 builds already have a 32-bit primary interpreter, so this is skipped there.
-    - name: Set up Python (32 bit)
-      if: inputs.python-arch == 'x64'
-      uses: actions/setup-python@v6
-      with:
-        python-version: ${{ inputs.python-version }}
-        architecture: x86
-        update-environment: false
-
     - name: Get NVDA commit SHA
       id: get-sha
       shell: bash
@@ -69,12 +59,58 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.github-token }}
 
+    # If python-version/python-arch aren't given, read them from NVDA's root .python-versions file
+    # (present since NVDA 2025.3). Each line is `cpython-<X.Y.Z>-windows-<arch>-none`; we take the
+    # first line as the primary interpreter and map x86_64->x64. NVDA's uv is
+    # python-preference=only-system, so pinning the exact patch NVDA declares is what makes the
+    # build find its interpreter. An explicit input always wins.
+    - name: Resolve Python version and arch
+      id: resolve-python
+      shell: bash
+      run: |
+        VERSION='${{ inputs.python-version }}'
+        ARCH='${{ inputs.python-arch }}'
+        if [ -z "$VERSION" ] || [ -z "$ARCH" ]; then
+          CONTENT=$(gh api "repos/nvaccess/nvda/contents/.python-versions?ref=${{ steps.get-sha.outputs.sha }}" -H "Accept: application/vnd.github.raw" 2>/dev/null || true)
+          LINE=$(echo "$CONTENT" | grep -m1 -oE 'cpython-[0-9]+\.[0-9]+\.[0-9]+-windows-(x86_64|x86)-none' || true)
+          if [ -z "$LINE" ]; then
+            echo "::error::Could not auto-detect Python from nvaccess/nvda@${{ inputs.nvda-ref }} (.python-versions is missing before NVDA 2025.3 or unparseable). Pass python-version and python-arch explicitly."
+            exit 1
+          fi
+          DETECTED_VERSION=$(echo "$LINE" | sed -E 's/^cpython-([0-9.]+)-.*/\1/')
+          DETECTED_ARCH_TOKEN=$(echo "$LINE" | sed -E 's/.*-windows-([a-z0-9_]+)-none/\1/')
+          if [ "$DETECTED_ARCH_TOKEN" = "x86_64" ]; then DETECTED_ARCH=x64; else DETECTED_ARCH=x86; fi
+          [ -z "$VERSION" ] && VERSION="$DETECTED_VERSION"
+          [ -z "$ARCH" ] && ARCH="$DETECTED_ARCH"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "arch=$ARCH" >> $GITHUB_OUTPUT
+        echo "Resolved python-version=$VERSION python-arch=$ARCH"
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ steps.resolve-python.outputs.version }}
+        architecture: ${{ steps.resolve-python.outputs.arch }}
+
+    # NVDA's x64 builds contain 32-bit components, so a matching 32-bit interpreter is required to
+    # build them. x86 builds already have a 32-bit primary interpreter, so this is skipped there.
+    - name: Set up Python (32 bit)
+      if: steps.resolve-python.outputs.arch == 'x64'
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ steps.resolve-python.outputs.version }}
+        architecture: x86
+        update-environment: false
+
     - name: Cache NVDA
       id: cache-nvda
       uses: actions/cache@v5
       with:
         path: nvda
-        key: ${{ runner.os }}-nvda-${{ inputs.python-version }}-${{ inputs.python-arch }}-${{ steps.get-sha.outputs.sha }}
+        key: ${{ runner.os }}-nvda-${{ steps.resolve-python.outputs.version }}-${{ steps.resolve-python.outputs.arch }}-${{ steps.get-sha.outputs.sha }}
 
     - name: Checkout NVDA
       if: steps.cache-nvda.outputs.cache-hit != 'true'

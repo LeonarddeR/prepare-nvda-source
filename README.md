@@ -23,20 +23,41 @@ same workflow into every repository.
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `python-version` | yes | — | Python version to install (e.g. `3.11`, `3.13.12`). |
-| `python-arch` | yes | — | Python architecture: `x86` or `x64`. Must match the target NVDA build. |
+| `python-version` | no | `` | Python version to install (e.g. `3.13.12`). Empty = auto-detect from NVDA's `.python-versions` (NVDA ≥ 2025.3). See [Automatic Python detection](#automatic-python-detection). |
+| `python-arch` | no | `` | Python architecture: `x86` or `x64`. Empty = auto-detect from NVDA's `.python-versions` (NVDA ≥ 2025.3). Must match the target NVDA build. |
 | `nvda-ref` | yes | — | Git ref of `nvaccess/nvda` to build (tag or branch, e.g. `release-2026.1`). |
 | `github-token` | yes | — | Token used to resolve `nvda-ref` to a commit SHA for a precise cache key. Pass `${{ github.token }}`. |
 | `scons-args` | no | `-j2` | Extra arguments appended to `scons source` (e.g. `-j2`, `version=...`). |
 | `install-vs-components` | no | `true` | Install NVDA's `.vsconfig` VS components at runtime. Set `false` on images that already ship the required VS toolset (e.g. the `windows-2025-vs2026` image) to skip the install. |
 | `vs-version` | no | `` | Major VS version to select when installing components (`17` = VS 2022, `18` = VS 2026). Empty = latest installed. |
 
+### Automatic Python detection
+
+If you leave `python-version` and/or `python-arch` empty, the action reads NVDA's root
+`.python-versions` file at the target ref and installs the interpreter NVDA itself pins. NVDA's uv is
+`python-preference = only-system`, so the build only finds its interpreter when the *exact* patch
+NVDA declares is present — auto-detection keeps you in sync automatically instead of hard-coding a
+version that drifts release-to-release.
+
+Details and caveats:
+
+- **Source of truth.** Each line of `.python-versions` is `cpython-<X.Y.Z>-windows-<arch>-none`. The
+  action uses the **first** line as the primary interpreter and maps `x86_64` → `x64`, `x86` → `x86`.
+- **NVDA ≥ 2025.3 only.** The file was introduced in NVDA 2025.3. For older refs, auto-detection
+  fails with a clear error — pass `python-version` and `python-arch` explicitly for those.
+- **Explicit wins.** Any value you pass overrides the detected one (you can auto-detect just the
+  version and pin the arch, or vice versa).
+- **Brand-new patches.** Detection installs the exact patch via `actions/setup-python`. In the rare
+  window where NVDA pins a patch newer than `actions/setup-python`'s manifest, pin `python-version`
+  explicitly until the manifest catches up.
+
 ### 32-bit Python
 
-When `python-arch` is `x64`, a secondary 32-bit (x86) Python is installed automatically (without
-becoming the primary interpreter). NVDA's x64 builds contain 32-bit components, so building them
-requires a matching 32-bit interpreter. For `x86` builds the primary interpreter is already 32-bit,
-so nothing extra is installed. This mirrors what `nvaccess/nvda` does in its own build job.
+When the (detected or explicit) architecture is `x64`, a secondary 32-bit (x86) Python is installed
+automatically (without becoming the primary interpreter). NVDA's x64 builds contain 32-bit
+components, so building them requires a matching 32-bit interpreter. For `x86` builds the primary
+interpreter is already 32-bit, so nothing extra is installed. This mirrors what `nvaccess/nvda` does
+in its own build job.
 
 ## Outputs
 
@@ -104,11 +125,16 @@ looks like this:
 ```json
 {
   "versions": [
-    { "name": "2025.3", "python": "3.11",    "arch": "x86", "ref": "release-2025.3.3" },
-    { "name": "2026.1", "python": "3.13.12", "arch": "x64", "ref": "release-2026.1" }
+    { "name": "2025.3", "ref": "release-2025.3.3" },
+    { "name": "2026.1", "ref": "release-2026.1" }
   ]
 }
 ```
+
+Python version and architecture are auto-detected per ref (see
+[Automatic Python detection](#automatic-python-detection)), so the matrix only needs the NVDA ref.
+Add `python`/`arch` entries and pass them through if you target NVDA < 2025.3 or want to pin a
+specific interpreter.
 
 `.github/workflows/ci.yaml`:
 
@@ -139,10 +165,9 @@ jobs:
       - name: Prepare NVDA source
         uses: bramd/prepare-nvda-source@v1
         with:
-          python-version: ${{ matrix.python }}
-          python-arch: ${{ matrix.arch }}
           nvda-ref: ${{ matrix.ref }}
           github-token: ${{ github.token }}
+          # python-version / python-arch omitted -> auto-detected from NVDA's .python-versions
 
       - name: Run unittests
         shell: cmd

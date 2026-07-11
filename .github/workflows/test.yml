@@ -17,12 +17,15 @@ jobs:
         include:
           # Current releases build with VS 2022 on the stock windows-2022 image, adding NVDA's
           # .vsconfig components at runtime (install-vs-components: true).
-          - name: "2025.3"
-            python: "3.11"
-            arch: x86
+          # Empty python/arch -> the action auto-detects them from NVDA's .python-versions.
+          # 2025.3's file has two lines; this exercises the first-line-primary heuristic (3.11.9/x86).
+          - name: "2025.3 (auto)"
+            python: ""
+            arch: ""
             ref: release-2025.3.3
             runner: windows-2022
             install-vs-components: "true"
+          # Explicit python/arch, to prove the passthrough path still works unchanged.
           - name: "2026.1"
             python: "3.13.12"
             arch: x64
@@ -32,11 +35,11 @@ jobs:
           # Frontier NVDA builds with VS 2026, which ships pre-installed on the standard GA
           # windows-2025-vs2026 image, so no runtime component install is needed. This mirrors
           # nvaccess/nvda's own build and proves the pre-baked-image path cross-org.
-          # NVDA's uv is python-preference=only-system, so python must be the exact patch master
-          # pins in its root .python-versions file (bump this when master drifts).
-          - name: "master (VS 2026)"
-            python: "3.13.13"
-            arch: x64
+          # Empty python/arch -> auto-detected from master's .python-versions (single line), so this
+          # entry never needs a manual bump when master advances its pinned interpreter.
+          - name: "master (VS 2026, auto)"
+            python: ""
+            arch: ""
             ref: master
             runner: windows-2025-vs2026
             install-vs-components: "false"
